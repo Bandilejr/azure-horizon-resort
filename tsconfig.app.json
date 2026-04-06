@@ -8,17 +8,13 @@
     "types": ["vite/client"],
     "skipLibCheck": true,
 
-    /* FIX 1: Silences the 'baseUrl' deprecation warning */
-    "ignoreDeprecations": "6.0", 
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     },
 
-    /* FIX 2: Enables consistent casing to prevent cross-OS import errors */
     "forceConsistentCasingInFileNames": true,
 
-    /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
@@ -26,7 +22,6 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Linting */
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
