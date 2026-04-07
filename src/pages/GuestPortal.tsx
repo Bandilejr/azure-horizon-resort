@@ -10,6 +10,7 @@ import { MyReservations } from '@/components/guest/MyReservations';
 import { MyOrders } from '@/components/guest/MyOrders';
 import { MyTableReservations } from '@/components/guest/MyTableReservations';
 import { RoomGallery } from '@/components/guest/RoomGallery';
+import { AlertModal } from '@/components/ui/AlertModal';
 import type { Booking, User as AppUser } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -49,9 +50,16 @@ export function GuestPortal() {
   const isResident = currentUser?.status === 'resident';
   const isElevatedGuest = currentUser?.status === 'visitor' || currentUser?.status === 'resident';
 
+  // Alert modal state
+  const [bookingAlert, setBookingAlert] = useState({
+    open: false,
+    title: '',
+    message: '',
+    type: 'info' as 'success' | 'error' | 'info' | 'warning'
+  });
+
   useEffect(() => {
     if (!currentUserId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLoading(false);
       return;
     }
@@ -79,9 +87,30 @@ export function GuestPortal() {
   }, [currentUserId]);
 
   const handleActionClick = (viewId: GuestView) => {
+    // Only allow booking for registered users (have email) OR residents
+    if (viewId === 'booking') {
+      const isRegisteredUser = currentUser?.email && currentUser.email !== '';
+      
+      if (!isRegisteredUser && !isResident) {
+        setBookingAlert({
+          open: true,
+          title: "🔒 Registration Required",
+          message: "Room booking is only available for registered members.\n\nPlease click 'Create Member Account' on the login page to register, then log in to book your stay.",
+          type: "warning"
+        });
+        return;
+      }
+    }
+    
+    // Existing restrictions
     if (viewId === 'room-service' || viewId === 'experience' || viewId === 'billing') {
       if (!isResident) {
-        alert("Access Restricted: This feature is exclusively for guests currently checked into a room.");
+        setBookingAlert({
+          open: true,
+          title: "⛔ Access Restricted",
+          message: "This feature is exclusively for guests currently checked into a room.\n\nPlease check in at the front desk to access room service, concierge, and billing.",
+          type: "warning"
+        });
         return;
       }
     }
@@ -120,6 +149,15 @@ export function GuestPortal() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Alert Modal */}
+      <AlertModal
+        open={bookingAlert.open}
+        onClose={() => setBookingAlert(prev => ({ ...prev, open: false }))}
+        title={bookingAlert.title}
+        message={bookingAlert.message}
+        type={bookingAlert.type}
+      />
+
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-serif font-bold text-[#1e3a5f]">
@@ -188,7 +226,7 @@ export function GuestPortal() {
                 ? "You are logged in as a visitor. Ready to book your retreat?" 
                 : "You are currently browsing. Sign up to book a room!"}
             </p>
-            <Button className="bg-[#1e3a5f]" onClick={() => setCurrentView('booking')}>
+            <Button className="bg-[#1e3a5f]" onClick={() => handleActionClick('booking')}>
               View Available Suites
             </Button>
           </CardContent>

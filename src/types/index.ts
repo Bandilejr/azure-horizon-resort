@@ -36,6 +36,7 @@ export interface Booking {
   id: string;
   uid?: string; // Firebase UID for auth linkage
   guestId: string;
+  guestEmail?: string;  // ← ADD THIS LINE
   guestName: string;
   roomId: string;
   roomName: string;

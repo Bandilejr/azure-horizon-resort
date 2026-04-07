@@ -148,6 +148,7 @@ export function BookingEngine({ onBack }: BookingEngineProps) {
       
       const result = await createBooking({
         guestId: u?.id || 'guest-user',
+        guestEmail: u?.email, 
         guestName: u?.name || 'Guest',
         roomId: selectedRoom.id,
         roomNumber: selectedRoom.id,

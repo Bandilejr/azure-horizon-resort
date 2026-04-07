@@ -17,6 +17,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import emailjs from '@emailjs/browser';
 import { 
   Dialog, 
   DialogContent, 
@@ -77,6 +78,7 @@ export function FrontDeskDashboard() {
   const [rooms, setRooms] = useState<RoomWithStatus[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [emailReceiptBooking, setEmailReceiptBooking] = useState<Booking | null>(null); // NEW: Store booking for email
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
   const [showBillingModal, setShowBillingModal] = useState(false);
@@ -88,6 +90,10 @@ export function FrontDeskDashboard() {
   const [showEditBookingModal, setShowEditBookingModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState('');
+  // EmailJS credentials
+  const EMAILJS_SERVICE_ID = 'service_nibp5fo';
+  const EMAILJS_TEMPLATE_ID = 'template_s94ikro';
+  const EMAILJS_PUBLIC_KEY = 'Uay4hCI5I5cY4bWmJ';
   const [guestBilling, setGuestBilling] = useState<GuestBilling | null>(null);
   const [isLoadingBilling, setIsLoadingBilling] = useState(false);
   const [incidentalCharges, setIncidentalCharges] = useState<IncidentalCharge[]>([
@@ -111,6 +117,12 @@ export function FrontDeskDashboard() {
   // Edit booking state
   const [editCheckIn, setEditCheckIn] = useState('');
   const [editCheckOut, setEditCheckOut] = useState('');
+
+  // Initialize EmailJS when component mounts
+  useEffect(() => {
+    emailjs.init(EMAILJS_PUBLIC_KEY);
+    console.log("EmailJS initialized");
+  }, []);
 
   useEffect(() => {
     const unsubscribeBookings = listenForBookings((updatedBookings) => {
@@ -189,12 +201,10 @@ export function FrontDeskDashboard() {
   const handleCheckIn = async () => {
     if (!selectedBooking || !selectedRoomId) return;
     
-    // Validate check-in date
-    const checkInDate = new Date(selectedBooking.checkInDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const checkInDateStr = selectedBooking.checkInDate.split('T')[0];
+    const todayStr = new Date().toISOString().split('T')[0];
     
-    if (checkInDate > today) {
+    if (checkInDateStr > todayStr) {
       setAlertModal({
         open: true,
         title: "Early Check-in Not Allowed",
@@ -204,8 +214,8 @@ export function FrontDeskDashboard() {
       return;
     }
 
-    const checkOutDate = new Date(selectedBooking.checkOutDate);
-    if (today > checkOutDate) {
+    const checkOutDateStr = selectedBooking.checkOutDate.split('T')[0];
+    if (todayStr > checkOutDateStr) {
       setAlertModal({
         open: true,
         title: "Booking Expired",
@@ -215,7 +225,6 @@ export function FrontDeskDashboard() {
       return;
     }
 
-    // VALIDATION: Check if guest is already checked in
     if (selectedBooking.status === 'checked_in') {
       setAlertModal({
         open: true,
@@ -259,7 +268,6 @@ export function FrontDeskDashboard() {
   const handleCheckOut = async () => {
     if (!selectedBooking) return;
     
-    // VALIDATION: Check if guest is actually checked in
     if (selectedBooking.status !== 'checked_in') {
       setAlertModal({
         open: true,
@@ -288,11 +296,15 @@ export function FrontDeskDashboard() {
       await updateDoc(roomRef, { isAvailable: true });
       
       setShowCheckOutModal(false);
-      setSelectedBooking(null);
-      setKeysReturned(false);
       
+      // Store the booking data for email before clearing
+      setEmailReceiptBooking(selectedBooking);
       setEmailAddress(selectedBooking.guestName.includes('@') ? selectedBooking.guestName : `${selectedBooking.guestName.replace(/\s/g, '').toLowerCase()}@example.com`);
       setShowEmailReceiptModal(true);
+      
+      // Clear the selected booking after opening email modal
+      setSelectedBooking(null);
+      setKeysReturned(false);
       
       setAlertModal({
         open: true,
@@ -314,23 +326,71 @@ export function FrontDeskDashboard() {
   };
 
   const handleSendEmailReceipt = async () => {
+    console.log("=== EMAIL BUTTON CLICKED ===");
+    console.log("Email address:", emailAddress);
+    console.log("Email receipt booking:", emailReceiptBooking);
+    
     if (!emailAddress) {
       alert("Please enter an email address.");
       return;
     }
     
+    if (!emailReceiptBooking) {
+      alert("No booking data available for receipt. Please try checking out again.");
+      return;
+    }
+    
     setIsProcessing(true);
+    
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setEmailSent(true);
+      console.log("Starting email send process...");
       
-      console.log(`Sending receipt to: ${emailAddress}`);
+      const roomCharges = emailReceiptBooking.totalAmount;
+      const tax = Math.round(roomCharges * 0.15);
+      const nights = calculateNights(emailReceiptBooking.checkInDate, emailReceiptBooking.checkOutDate);
       
-      setTimeout(() => {
-        setShowEmailReceiptModal(false);
-        setEmailSent(false);
-        setEmailAddress('');
-      }, 2000);
+      const templateParams = {
+        to_email: emailAddress,
+        guest_name: emailReceiptBooking.guestName,
+        booking_id: emailReceiptBooking.id,
+        room_name: emailReceiptBooking.roomName,
+        check_in: emailReceiptBooking.checkInDate,
+        check_out: emailReceiptBooking.checkOutDate,
+        nights: nights.toString(),
+        room_charges: roomCharges.toFixed(2),
+        tax: tax.toFixed(2),
+        total: (roomCharges + tax).toFixed(2),
+        incidental_charges: getTotalIncidentalCharges().toFixed(2),
+        grand_total: (roomCharges + getTotalIncidentalCharges()).toFixed(2),
+      };
+      
+      console.log("Template params:", templateParams);
+      
+      const response = await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        templateParams,
+        EMAILJS_PUBLIC_KEY
+      );
+      
+      console.log("EmailJS response:", response);
+      
+      if (response.status === 200) {
+        setEmailSent(true);
+        alert(`✅ Receipt sent successfully to ${emailAddress}!`);
+        
+        setTimeout(() => {
+          setShowEmailReceiptModal(false);
+          setEmailSent(false);
+          setEmailAddress('');
+          setEmailReceiptBooking(null); // Clear the email booking after sending
+        }, 2000);
+      } else {
+        throw new Error(`Status: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("Email send failed:", error);
+      alert(`❌ Failed to send receipt: ${error instanceof Error ? error.message : 'Unknown error'}. Check console for details.`);
     } finally {
       setIsProcessing(false);
     }
@@ -445,7 +505,6 @@ export function FrontDeskDashboard() {
       });
       alert("Booking dates updated successfully!");
       setShowEditBookingModal(false);
-      // Refresh the bookings list
       const snapshot = await getDocs(collection(db, 'bookings'));
       const updatedBookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
       setBookings(updatedBookings);
@@ -480,7 +539,6 @@ export function FrontDeskDashboard() {
         await updateDoc(bookingRef, { status: 'cancelled' });
         alert("Booking cancelled successfully.");
         setShowEditBookingModal(false);
-        // Refresh the bookings list
         const snapshot = await getDocs(collection(db, 'bookings'));
         const updatedBookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
         setBookings(updatedBookings);
@@ -496,7 +554,6 @@ export function FrontDeskDashboard() {
   const handleDownloadInvoice = async () => {
     if (!selectedBooking) return;
     
-    // Create a temporary div with the invoice HTML
     const tempDiv = document.createElement('div');
     tempDiv.style.position = 'absolute';
     tempDiv.style.left = '-9999px';
@@ -578,7 +635,7 @@ export function FrontDeskDashboard() {
         orientation: 'portrait'
       });
       
-      const imgWidth = 210; // A4 width in mm
+      const imgWidth = 210;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       
       pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
@@ -629,7 +686,6 @@ export function FrontDeskDashboard() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Alert Modal */}
       <AlertModal
         open={alertModal.open}
         onClose={() => setAlertModal(prev => ({ ...prev, open: false }))}
@@ -839,7 +895,14 @@ export function FrontDeskDashboard() {
       </Dialog>
 
       {/* Email Receipt Modal */}
-      <Dialog open={showEmailReceiptModal} onOpenChange={setShowEmailReceiptModal}>
+      <Dialog open={showEmailReceiptModal} onOpenChange={(open) => {
+        setShowEmailReceiptModal(open);
+        if (!open) {
+          // Clear email receipt data when modal closes
+          setEmailReceiptBooking(null);
+          setEmailAddress('');
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -875,7 +938,14 @@ export function FrontDeskDashboard() {
                 <Button variant="outline" className="flex-1" onClick={() => setShowEmailReceiptModal(false)}>
                   Skip
                 </Button>
-                <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={handleSendEmailReceipt} disabled={isProcessing}>
+                <Button 
+                  className="flex-1 bg-blue-600 hover:bg-blue-700" 
+                  onClick={() => {
+                    console.log("Send button clicked directly");
+                    handleSendEmailReceipt();
+                  }} 
+                  disabled={isProcessing}
+                >
                   {isProcessing ? <Loader2 className="animate-spin mr-2" /> : <Send className="mr-2 h-4 w-4" />}
                   Send Receipt
                 </Button>
@@ -1070,7 +1140,6 @@ export function FrontDeskDashboard() {
             </DialogTitle>
           </DialogHeader>
 
-          {/* Warning for checked out guests */}
           {selectedBooking?.status === 'checked_out' && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-sm text-blue-700 font-medium">
@@ -1307,7 +1376,7 @@ function BookingsTable({
             <th className="px-6 py-4 text-left font-medium"><div className="flex items-center gap-2"><Users className="h-4 w-4" />Guest</div></th>
             <th className="px-6 py-4 text-left font-medium">Status</th>
             <th className="px-6 py-4 text-left font-medium">Actions</th>
-           </tr>
+          </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
           {bookings.map((booking) => (

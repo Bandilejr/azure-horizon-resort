@@ -327,7 +327,7 @@ export function LandingPage({ onRegisterClick }: LandingPageProps) {
                 </Tabs>
 
                 <div className="mt-8 pt-4 border-t text-center">
-                  <Button variant="ghost" size="sm" className="text-gray-400 hover:text-blue-900" onClick={handleSeedDatabase} disabled={isSeeding}>
+                  <Button variant="ghost" size="sm" className="text-gray-400 hover:text-blue-900 hidden" onClick={handleSeedDatabase} disabled={isSeeding}>
                     <Database className="h-3 w-3 mr-2" /> {isSeeding ? 'Syncing...' : 'Initialize System'}
                   </Button>
                 </div>

@@ -439,12 +439,21 @@ export const createBooking = async (bookingData: Omit<Booking, 'id' | 'createdAt
 
     await setDoc(newDoc, finalBooking);
     
-    // Update user status
-    const userRef = doc(db, 'users', bookingData.guestId);
-    await updateDoc(userRef, {
-      status: 'resident',
-      roomNumber: bookingData.roomNumber
-    });
+    // Update user status to 'resident' if guestEmail is provided
+    if (bookingData.guestEmail) {
+      const userRef = doc(db, 'users', bookingData.guestEmail);
+      const userSnap = await getDoc(userRef);
+      
+      if (userSnap.exists()) {
+        await updateDoc(userRef, {
+          status: 'resident',
+          roomNumber: bookingData.roomNumber
+        });
+        console.log(`Updated user ${bookingData.guestEmail} to resident status`);
+      } else {
+        console.log("User not found with email:", bookingData.guestEmail);
+      }
+    }
 
     return { success: true, bookingId: id };
   } catch (error: unknown) {
